@@ -1,0 +1,75 @@
+from flask import Flask, render_template_string
+import serial
+import threading
+import time
+
+app = Flask(__name__)
+
+try:
+    # Port aur Baud rate check karein
+    ser = serial.Serial('COM5', 9600, timeout=1) 
+    print("Connected to COM5!")
+except Exception as e:
+    print(f"Error: {e}")
+
+log_data = []
+
+def monitor_arduino():
+    while True:
+        try:
+            line = ser.readline().decode('utf-8').strip()
+            if line and "," in line:
+                print(f"Received: {line}") # Terminal check
+                parts = line.split(",")
+                angle = parts[0]
+                dist = int(parts[1])
+                
+                # AB HUM HAR EK READING KO LOG KARENGE (Testing ke liye)
+                timestamp = time.strftime("%H:%M:%S")
+                entry = {"time": timestamp, "angle": angle, "dist": dist}
+                
+                log_data.insert(0, entry) # Naya data sabse upar
+                if len(log_data) > 20: log_data.pop() # Max 20 entries
+        except:
+            continue
+
+threading.Thread(target=monitor_arduino, daemon=True).start()
+
+@app.route('/')
+def home():
+    # HTML ko thoda improve kiya hai taaki clear dikhe
+    return render_template_string('''
+        <html>
+            <head>
+                <title>Radar Dashboard</title>
+                <meta http-equiv="refresh" content="1">
+                <style>
+                    body { font-family: Arial; text-align: center; background: #2c3e50; color: white; }
+                    .container { width: 80%; margin: auto; padding: 20px; }
+                    table { width: 100%; border-collapse: collapse; background: #34495e; }
+                    th, td { padding: 15px; border: 1px solid #7f8c8d; text-align: center; }
+                    th { background: #1abc9c; }
+                    tr:first-child { background: #e67e22; font-weight: bold; } /* Latest detection highlight */
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>📡 Live Radar Log</h1>
+                    <p>Terminal Status: Connected to COM5</p>
+                    <table>
+                        <tr><th>Time</th><th>Angle (&deg;)</th><th>Distance (cm)</th></tr>
+                        {% for item in logs %}
+                        <tr>
+                            <td>{{ item.time }}</td>
+                            <td>{{ item.angle }}</td>
+                            <td>{{ item.dist }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </body>
+        </html>
+    ''', logs=log_data)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False)
